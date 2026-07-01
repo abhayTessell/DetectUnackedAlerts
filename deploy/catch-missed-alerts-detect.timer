@@ -1,0 +1,11 @@
+[Unit]
+Description=Run catch-missed-alerts detect at the top of every hour
+
+[Timer]
+# 00:00, 01:00, 02:00, ... local time
+OnCalendar=*-*-* *:00:00
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

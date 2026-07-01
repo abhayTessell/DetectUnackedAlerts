@@ -1,0 +1,11 @@
+{
+  "CHANNEL_ID": "C074G5Q49D3",
+
+  "SUBTEAM_ID": "S07PZLLN8RF",
+  "SUBTEAM_HANDLE": "sre-shift-leads",
+
+  "WINDOW_SEC": 3600,
+  "MAX_REPOSTS": 3,
+  "WINDOW_LABEL": "1 hr",
+  "STATE_FILE": "state.json"
+}
