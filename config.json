@@ -7,5 +7,10 @@
   "WINDOW_SEC": 3600,
   "MAX_REPOSTS": 3,
   "WINDOW_LABEL": "1 hr",
-  "STATE_FILE": "state.json"
+  "STATE_FILE": "state.json",
+
+  "NIGHT_WINDOW_SEC": 43200,
+  "NIGHT_WINDOW_LABEL": "overnight (9pm–9am)",
+  "ESCALATE_CHANNEL_ID": "C074G5Q49D3",
+  "ESCALATE_USERS": ["U06GK2BSAA1", "U04P08QGYLA", "U093SMR3527"]
 }

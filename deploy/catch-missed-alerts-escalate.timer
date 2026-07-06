@@ -1,0 +1,11 @@
+[Unit]
+Description=Run catch-missed-alerts escalate once a day at 09:00 (end of night window)
+
+[Timer]
+# 09:00 local time daily — validates the overnight (21:00–09:00) criticals
+OnCalendar=*-*-* 09:00:00
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

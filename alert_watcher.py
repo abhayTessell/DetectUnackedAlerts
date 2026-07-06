@@ -17,12 +17,21 @@ Two modes, run by two separate schedulers:
       reminder ping and bump the counter, up to MAX_REPOSTS total posts, then
       give up and stay quiet until the next hourly detect.
 
+  escalate  (once a day at 09:00 — end of the night window)
+      Rescan the whole overnight window (NIGHT_WINDOW_SEC back, default the
+      12h from 21:00 to 09:00). Any critical alert still unacked at 9am gets
+      escalated: DM each user in ESCALATE_USERS individually AND post one
+      summary in ESCALATE_CHANNEL_ID that pings them. detect/check keep
+      running overnight too, so the normal @sre-shift-leads ping still fires;
+      escalate is the morning safety net for anything that slipped through.
+
 An alert / summary is "acked" if it has ANY reaction OR ANY reply from someone
 other than the alerting app itself.
 
 Usage:
     python3 alert_watcher.py detect
     python3 alert_watcher.py check
+    python3 alert_watcher.py escalate
 """
 
 import json
@@ -70,6 +79,28 @@ if not STATE_FILE.is_absolute():                           # relative -> anchor 
 WINDOW_SEC = int(cfg("WINDOW_SEC", 3600))                   # detect scans this far back (default 1h = one hourly bucket)
 MAX_REPOSTS = int(cfg("MAX_REPOSTS", 10))                   # max summary posts per cycle (initial + reminders) before giving up
 WINDOW_LABEL = cfg("WINDOW_LABEL", "1 hr")                  # text shown in the summary header
+
+
+def _id_list(value):
+    """Parse a user-id list from config (JSON array) or env (comma/space string)."""
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return [str(v).strip() for v in parsed if str(v).strip()]
+        except ValueError:
+            pass
+        return [tok for tok in re.split(r"[,\s]+", value) if tok]
+    return []
+
+
+# escalate mode: overnight safety net -----------------------------------------
+NIGHT_WINDOW_SEC = int(cfg("NIGHT_WINDOW_SEC", 43200))       # how far escalate rescans (default 12h = 21:00->09:00)
+NIGHT_WINDOW_LABEL = cfg("NIGHT_WINDOW_LABEL", "overnight (9pm–9am)")
+ESCALATE_USERS = _id_list(cfg("ESCALATE_USERS", []))         # Slack user ids DM'd at 9am for unacked overnight criticals
+ESCALATE_CHANNEL_ID = cfg("ESCALATE_CHANNEL_ID", CHANNEL_ID) # channel the 9am escalation summary is posted to
 
 SLACK_API = "https://slack.com/api"
 
@@ -245,15 +276,17 @@ def post_summary(alerts, now, count):
 # --------------------------------------------------------------------------- #
 # Modes
 # --------------------------------------------------------------------------- #
-def detect():
-    """Hourly: scan the window, post ONE summary of unacked criticals, seed state."""
-    now = time.time()
-    state = load_state()
+def find_unacked(oldest_ts):
+    """Scan the channel since oldest_ts, return unacked critical alerts (sorted).
 
+    A firing critical is dropped if a later [resolved] cancels it, or if it is
+    already acked. Ack state comes from the freshly-fetched message, so callers
+    always see current reactions / reply counts.
+    """
     # Ingest firing + resolved criticals; a later [resolved] cancels its firing pair.
     firing = {}                                       # ts -> alert dict
     resolved_at = {}                                  # alert_key -> latest resolved ts
-    for msg in fetch_recent_messages(now - WINDOW_SEC):
+    for msg in fetch_recent_messages(oldest_ts):
         alert = parse_alert(msg)
         if not alert:
             continue
@@ -272,6 +305,15 @@ def detect():
             continue
         unacked.append(a)
     unacked.sort(key=lambda a: float(a["ts"]))
+    return unacked
+
+
+def detect():
+    """Hourly: scan the window, post ONE summary of unacked criticals, seed state."""
+    now = time.time()
+    state = load_state()
+
+    unacked = find_unacked(now - WINDOW_SEC)
 
     if not unacked:
         state["summary"] = None
@@ -314,6 +356,50 @@ def check():
     print(f"reposted summary {count + 1}/{MAX_REPOSTS}, still unacked")
 
 
+def build_escalation(alerts, now):
+    """9am escalation message: unacked overnight criticals + pings to the DM list."""
+    mention = " ".join(f"<@{u}>" for u in ESCALATE_USERS)
+    lines = [f":rotating_light: {len(alerts)} critical alert(s) went UNACKED "
+             f"{NIGHT_WINDOW_LABEL} — escalating:", ""]
+    for a in alerts:
+        lines.append(f"{a['name']} — service {a['service']} ({age_str(a['ts'], now)})")
+    if mention:
+        lines += ["", f"Not acknowledged overnight. {mention} please take a look."]
+    return "\n".join(lines)
+
+
+def dm_user(user_id, text):
+    """Open (or reuse) an IM with user_id and post text there."""
+    conv = slack("conversations.open", http="post", users=user_id)
+    im_channel = conv["channel"]["id"]
+    slack("chat.postMessage", http="post", channel=im_channel, text=text, link_names=True)
+
+
+def escalate():
+    """09:00: rescan the night window; DM + channel-ping any still-unacked criticals."""
+    now = time.time()
+    unacked = find_unacked(now - NIGHT_WINDOW_SEC)
+
+    if not unacked:
+        print("no unacked overnight critical alerts")
+        return
+
+    text = build_escalation(unacked, now)
+    slack("chat.postMessage", http="post", channel=ESCALATE_CHANNEL_ID, text=text,
+          link_names=True)
+
+    delivered = 0
+    for user_id in ESCALATE_USERS:
+        try:
+            dm_user(user_id, text)
+            delivered += 1
+        except RuntimeError as e:
+            print(f"DM to {user_id} failed: {e}", file=sys.stderr)
+
+    print(f"escalated {len(unacked)} overnight unacked alert(s): "
+          f"posted to {ESCALATE_CHANNEL_ID}, DM'd {delivered}/{len(ESCALATE_USERS)} user(s)")
+
+
 # --------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------- #
@@ -326,8 +412,10 @@ def main():
         detect()
     elif mode == "check":
         check()
+    elif mode == "escalate":
+        escalate()
     else:
-        sys.exit("usage: alert_watcher.py {detect|check}")
+        sys.exit("usage: alert_watcher.py {detect|check|escalate}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,11 @@
+[Unit]
+Description=Catch missed critical Slack alerts — 09:00 overnight escalation (DM + channel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ec2-user
+WorkingDirectory=/opt/catch_missed_alerts
+ExecStart=/opt/catch_missed_alerts/venv/bin/python /opt/catch_missed_alerts/alert_watcher.py escalate
+TimeoutStartSec=120
