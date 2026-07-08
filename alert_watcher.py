@@ -102,6 +102,37 @@ NIGHT_WINDOW_LABEL = cfg("NIGHT_WINDOW_LABEL", "overnight (9pm–9am)")
 ESCALATE_USERS = _id_list(cfg("ESCALATE_USERS", []))         # Slack user ids DM'd at 9am for unacked overnight criticals
 ESCALATE_CHANNEL_ID = cfg("ESCALATE_CHANNEL_ID", CHANNEL_ID) # channel the 9am escalation summary is posted to
 
+
+def _norm(s):
+    """Lowercase + collapse whitespace, for tolerant alert-name matching."""
+    return re.sub(r"\s+", " ", str(s)).strip().lower()
+
+
+# Alert names flagged red (:red_circle:) in both the 1 hr and overnight summaries.
+# From config.json RED_ALERTS (JSON array); env override is comma-separated.
+def _str_list(value):
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return [str(v).strip() for v in parsed if str(v).strip()]
+        except ValueError:
+            pass
+        return [tok.strip() for tok in value.split(",") if tok.strip()]
+    return []
+
+
+RED_ALERTS = _str_list(cfg("RED_ALERTS", []))
+_RED_NORM = [_norm(k) for k in RED_ALERTS]
+
+
+def is_red(name):
+    """True if this alert name matches a configured red-highlight alert."""
+    n = _norm(name)
+    return any(k and (k in n or n in k) for k in _RED_NORM)
+
 SLACK_API = "https://slack.com/api"
 
 
@@ -251,6 +282,12 @@ def age_str(ts, now):
     return f"{hrs}h{rem:02d}m ago" if rem else f"{hrs}h ago"
 
 
+def alert_line(a, now):
+    """One summary line; prefixed with :red_circle: for red-flagged alerts."""
+    line = f"{a['name']} — service {a['service']} ({age_str(a['ts'], now)})"
+    return f":red_circle: {line}" if is_red(a['name']) else line
+
+
 def build_summary(alerts, now):
     """alerts: list of {ts, name, service}."""
     mention = (f"<!subteam^{SUBTEAM_ID}|{SUBTEAM_HANDLE}>"
@@ -258,7 +295,7 @@ def build_summary(alerts, now):
     lines = [f":rotating_light: In the last {WINDOW_LABEL} these critical alerts "
              f"have NOT been acked ({len(alerts)}):", ""]
     for a in alerts:
-        lines.append(f"{a['name']} — service {a['service']} ({age_str(a['ts'], now)})")
+        lines.append(alert_line(a, now))
     lines += ["", mention]
     return "\n".join(lines)
 
@@ -362,7 +399,7 @@ def build_escalation(alerts, now):
     lines = [f":rotating_light: {len(alerts)} critical alert(s) went UNACKED "
              f"{NIGHT_WINDOW_LABEL} — escalating:", ""]
     for a in alerts:
-        lines.append(f"{a['name']} — service {a['service']} ({age_str(a['ts'], now)})")
+        lines.append(alert_line(a, now))
     if mention:
         lines += ["", f"Not acknowledged overnight. {mention} please take a look."]
     return "\n".join(lines)

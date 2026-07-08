@@ -12,5 +12,15 @@
   "NIGHT_WINDOW_SEC": 36000,
   "NIGHT_WINDOW_LABEL": "overnight (9pm–7am)",
   "ESCALATE_CHANNEL_ID": "C074G5Q49D3",
-  "ESCALATE_USERS": ["U06GK2BSAA1", "U04P08QGYLA", "U093SMR3527","U09J0BXJXCZ"]
+  "ESCALATE_USERS": ["U06GK2BSAA1", "U04P08QGYLA", "U093SMR3527","U09J0BXJXCZ"],
+
+  "RED_ALERTS": [
+    "Database Service Down",
+    "Provisioning of DB Service failed",
+    "Add instance to db service failed",
+    "Logsweep service",
+    "Update for DB service failed",
+    "Un-quiesce failure",
+    "Backup for db service failed"
+  ]
 }
