@@ -1,2 +1,5 @@
 ssh -i /Users/abhay.tiwaritessel.com/Desktop/dir/tokens/key-pair/abhay_test.pem ec2-user@43.204.37.66
 
+sudo systemctl daemon-reload
+
+systemctl list-timers 'catch-missed-alerts-*'   

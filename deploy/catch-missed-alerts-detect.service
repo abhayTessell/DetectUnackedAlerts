@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=ec2-user
-WorkingDirectory=/opt/catch_missed_alerts
-ExecStart=/opt/catch_missed_alerts/venv/bin/python /opt/catch_missed_alerts/alert_watcher.py detect
+WorkingDirectory=/home/ec2-user/DetectUnackedAlerts
+ExecStart=/home/ec2-user/DetectUnackedAlerts/venv/bin/python /home/ec2-user/DetectUnackedAlerts/alert_watcher.py detect
 # don't let one bad run wedge the timer
 TimeoutStartSec=120
